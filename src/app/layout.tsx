@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { cookies } from "next/headers";
 import "./globals.css";
 import Navigation from "@/components/Navigation";
+import PwaInstallPrompt from "@/components/PwaInstallPrompt";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -54,6 +55,7 @@ export default async function RootLayout({
         <main className={`flex-1 w-full max-w-7xl mx-auto px-4 py-6 md:py-8 ${isAuthenticated ? "main-content-wrapper pb-20 md:pb-8" : ""}`}>
           {children}
         </main>
+        <PwaInstallPrompt />
       </body>
     </html>
   );
