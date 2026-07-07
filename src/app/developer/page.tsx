@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Trash2, AlertTriangle, HardDrive, RefreshCcw, UserPlus, Lock, ClipboardCopy, Send, Eye, Shield, Users, MapPin, Edit2, MousePointerClick, Settings, Sliders } from "lucide-react";
+import { Trash2, AlertTriangle, HardDrive, RefreshCcw, UserPlus, Lock, ClipboardCopy, Send, Eye, Shield, Users, MapPin, Edit2, MousePointerClick, Settings, Sliders, Mail, Search, Laptop, Globe, Server, CheckCircle } from "lucide-react";
 
 interface UserAccount {
   uid: string;
@@ -51,8 +51,16 @@ interface AuditLog {
 
 export default function DeveloperConsole() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<"users" | "permissions" | "audit" | "database" | "telemetry" | "system">("users");
+  const [activeTab, setActiveTab] = useState<"users" | "permissions" | "audit" | "emails" | "telemetry" | "system" | "database">("users");
   const [isAuthChecking, setIsAuthChecking] = useState<boolean>(true);
+
+  // Email management states
+  const [emailSearchQuery, setEmailSearchQuery] = useState<string>("");
+  const [emailStatusFilter, setEmailStatusFilter] = useState<string>("ALL");
+  const [emailTypeFilter, setEmailTypeFilter] = useState<string>("ALL");
+  const [expandedEmailLogId, setExpandedEmailLogId] = useState<string | null>(null);
+  const [testEmailTarget, setTestEmailTarget] = useState<string>("");
+  const [isTestSending, setIsTestSending] = useState<boolean>(false);
 
   // Data states
   const [usersList, setUsersList] = useState<UserAccount[]>([]);
@@ -190,10 +198,7 @@ export default function DeveloperConsole() {
           setStatus({ type: "error", text: errData.error || "Failed to load system audit trails." });
         }
       } else if (activeTab === "system") {
-        const [configRes, emailRes] = await Promise.all([
-          fetch("/api/system/config"),
-          fetch("/api/developer/email-logs")
-        ]);
+        const configRes = await fetch("/api/system/config");
         if (configRes.ok) {
           const data = await configRes.json();
           setMaintMode(!!data.maintenanceMode);
@@ -201,9 +206,14 @@ export default function DeveloperConsole() {
         } else {
           setStatus({ type: "error", text: "Failed to query maintenance/alert configurations." });
         }
-        if (emailRes.ok) {
-          const data = await emailRes.json();
+      } else if (activeTab === "emails") {
+        const res = await fetch("/api/developer/email-logs");
+        if (res.ok) {
+          const data = await res.json();
           setEmailLogs(data);
+        } else {
+          const errData = await res.json();
+          setStatus({ type: "error", text: errData.error || "Failed to load email logs." });
         }
       } else if (activeTab === "database") {
         const res = await fetch("/api/get-logs");
@@ -218,6 +228,48 @@ export default function DeveloperConsole() {
       setStatus({ type: "error", text: "Connection error loading console data." });
     } finally {
       setIsDataLoading(false);
+    }
+  };
+
+  // Manual SMTP relay verification dispatch handler
+  const handleSendTestEmail = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!testEmailTarget.trim()) {
+      setStatus({ type: "error", text: "Recipient email address is required." });
+      return;
+    }
+
+    setIsTestSending(true);
+    setStatus({ type: null, text: "" });
+
+    try {
+      const res = await fetch("/api/auth/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: testEmailTarget.trim() }),
+      });
+
+      const result = await res.json();
+
+      if (res.ok) {
+        setStatus({
+          type: "success",
+          text: `SMTP Diagnostic notification successfully sent to: ${testEmailTarget}`,
+        });
+        setTestEmailTarget("");
+        // Reload emails list to showcase new tracking entry!
+        const logRes = await fetch("/api/developer/email-logs");
+        if (logRes.ok) {
+          const logData = await logRes.json();
+          setEmailLogs(logData);
+        }
+      } else {
+        setStatus({ type: "error", text: result.error || "SMTP mail server dispatch failed." });
+      }
+    } catch (err) {
+      setStatus({ type: "error", text: "Network error sending test email." });
+    } finally {
+      setIsTestSending(false);
     }
   };
 
@@ -646,6 +698,32 @@ export default function DeveloperConsole() {
     }
   };
 
+  // Email Logs filter logic
+  const filteredEmailLogs = emailLogs.filter((log) => {
+    const matchesSearch =
+      log.to.toLowerCase().includes(emailSearchQuery.toLowerCase()) ||
+      log.subject.toLowerCase().includes(emailSearchQuery.toLowerCase()) ||
+      log.type.toLowerCase().includes(emailSearchQuery.toLowerCase());
+
+    const matchesStatus =
+      emailStatusFilter === "ALL" ||
+      (emailStatusFilter === "OPENED" && log.status === "OPENED") ||
+      (emailStatusFilter === "SENT" && log.status === "SENT");
+
+    const matchesType = emailTypeFilter === "ALL" || log.type === emailTypeFilter;
+
+    return matchesSearch && matchesStatus && matchesType;
+  });
+
+  const totalSent = emailLogs.length;
+  const openedLogs = emailLogs.filter((log) => log.status === "OPENED");
+  const totalOpens = emailLogs.reduce((acc, log) => acc + (log.opens?.length || 0), 0);
+  const openRate = totalSent > 0 ? Math.round((openedLogs.length / totalSent) * 100) : 0;
+  const proxyOpens = emailLogs.reduce(
+    (acc, log) => acc + (log.opens?.filter((op: any) => op.isProxy).length || 0),
+    0
+  );
+
   if (isAuthChecking) {
     return (
       <div className="min-h-[60vh] flex flex-col items-center justify-center gap-3">
@@ -751,6 +829,17 @@ export default function DeveloperConsole() {
             >
               <MousePointerClick size={14} />
               <span>User Clicks</span>
+            </button>
+            <button
+              onClick={() => setActiveTab("emails")}
+              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all duration-200 cursor-pointer ${
+                activeTab === "emails"
+                  ? "bg-blue text-white shadow-md shadow-blue/20"
+                  : "text-slate-555 hover:bg-slate-50 hover:text-slate-800"
+              }`}
+            >
+              <Mail size={14} />
+              <span>Email Logs</span>
             </button>
             <button
               onClick={() => setActiveTab("system")}
@@ -1341,6 +1430,313 @@ export default function DeveloperConsole() {
                   ))}
                 </div>
               )}
+            </div>
+          )}
+
+          {/* 📬 Tab: Corporate Email Logs and SMTP Diagnostic Relay */}
+          {activeTab === "emails" && (
+            <div className="space-y-6 animate-fadeIn">
+              
+              {/* Statistics Grid */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="card-panel p-4 rounded-xl space-y-1.5 shadow-sm">
+                  <span className="block text-[9px] font-bold text-slate-500 uppercase tracking-widest leading-none">
+                    Total Dispatched
+                  </span>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xl font-black text-slate-800">{totalSent}</span>
+                    <Mail className="text-slate-400" size={18} />
+                  </div>
+                </div>
+
+                <div className="card-panel p-4 rounded-xl space-y-1.5 shadow-sm">
+                  <span className="block text-[9px] font-bold text-slate-500 uppercase tracking-widest leading-none">
+                    Opened Emails
+                  </span>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xl font-black text-slate-800">{openedLogs.length}</span>
+                    <Eye className="text-slate-400" size={18} />
+                  </div>
+                </div>
+
+                <div className="card-panel p-4 rounded-xl space-y-1.5 shadow-sm">
+                  <span className="block text-[9px] font-bold text-slate-500 uppercase tracking-widest leading-none">
+                    Open Engagement
+                  </span>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xl font-black text-slate-800">{openRate}%</span>
+                    <span className="text-[10px] text-teal-600 bg-teal-50 px-1.5 py-0.5 rounded font-bold">
+                      {totalOpens} Opens
+                    </span>
+                  </div>
+                </div>
+
+                <div className="card-panel p-4 rounded-xl space-y-1.5 shadow-sm">
+                  <span className="block text-[9px] font-bold text-slate-500 uppercase tracking-widest leading-none">
+                    Proxy / VPN Detections
+                  </span>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xl font-black text-slate-800">{proxyOpens}</span>
+                    <Shield size={18} className="text-amber-500" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Main Content Layout */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                
+                {/* Left Column: Logs database list */}
+                <div className="lg:col-span-2 space-y-4">
+                  <div className="card-panel p-5 rounded-xl space-y-4 shadow-sm">
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                        Email Auditing Database
+                      </h3>
+                      <button
+                        onClick={loadTabContent}
+                        disabled={isDataLoading}
+                        className="text-[10px] text-slate-400 hover:text-slate-800 font-bold uppercase flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                      >
+                        <RefreshCcw size={12} className={isDataLoading ? "animate-spin" : ""} />
+                        <span>Refresh Logs</span>
+                      </button>
+                    </div>
+
+                    {/* Dynamic search & filtering bar */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div className="relative">
+                        <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400">
+                          <Search size={13} />
+                        </span>
+                        <input
+                          type="text"
+                          placeholder="Search address..."
+                          value={emailSearchQuery}
+                          onChange={(e) => setEmailSearchQuery(e.target.value)}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-8 pr-3 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:border-blue placeholder-slate-400"
+                        />
+                      </div>
+
+                      <select
+                        value={emailStatusFilter}
+                        onChange={(e) => setEmailStatusFilter(e.target.value)}
+                        className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2 text-xs font-semibold text-slate-700 focus:outline-none focus:border-blue cursor-pointer"
+                      >
+                        <option value="ALL">All Statuses</option>
+                        <option value="SENT">Sent (Unopened)</option>
+                        <option value="OPENED">Opened (Tracked)</option>
+                      </select>
+
+                      <select
+                        value={emailTypeFilter}
+                        onChange={(e) => setEmailTypeFilter(e.target.value)}
+                        className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2 text-xs font-semibold text-slate-700 focus:outline-none focus:border-blue cursor-pointer"
+                      >
+                        <option value="ALL">All Event Types</option>
+                        <option value="SECURITY_ALERT">Privileged Login Alerts</option>
+                        <option value="AUDIT_ALERT">Audit Log Deletions</option>
+                        <option value="SECURITY_WARNING">Rate Limits Warning</option>
+                        <option value="PASSWORD_RESET">Password Recovery</option>
+                      </select>
+                    </div>
+
+                    {/* Table View */}
+                    {isDataLoading ? (
+                      <div className="p-12 text-center text-xs text-slate-400 font-bold uppercase tracking-widest animate-pulse">
+                        Synchronizing tracking database...
+                      </div>
+                    ) : filteredEmailLogs.length === 0 ? (
+                      <div className="p-12 text-center text-slate-400 text-xs font-bold uppercase tracking-wider">
+                        No email tracking logs found
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto border border-slate-200 rounded-lg shadow-sm">
+                        <table className="min-w-full divide-y divide-slate-100 text-left">
+                          <thead className="bg-slate-50 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                            <tr>
+                              <th className="px-4 py-3">Recipient Address</th>
+                              <th className="px-4 py-3">Type</th>
+                              <th className="px-4 py-3">Dispatched At</th>
+                              <th className="px-4 py-3">Status</th>
+                              <th className="px-4 py-3"></th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 text-xs font-semibold text-slate-700">
+                            {filteredEmailLogs.map((log) => (
+                              <React.Fragment key={log.id}>
+                                <tr className="hover:bg-slate-50/50 transition-colors">
+                                  <td className="px-4 py-3 font-mono font-bold text-slate-800 truncate max-w-[150px]" title={log.to}>
+                                    {log.to}
+                                  </td>
+                                  <td className="px-4 py-3 font-bold">
+                                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-black ${
+                                      log.type === "SECURITY_ALERT"
+                                        ? "bg-blue/5 text-blue border border-blue/10"
+                                        : log.type === "AUDIT_ALERT"
+                                        ? "bg-red-50 text-red-700 border border-red-100"
+                                        : log.type === "SECURITY_WARNING"
+                                        ? "bg-amber-50 text-amber-700 border border-amber-100"
+                                        : "bg-slate-100 text-slate-700"
+                                    }`}>
+                                      {log.type.replace("_", " ")}
+                                    </span>
+                                  </td>
+                                  <td className="px-4 py-3 text-slate-500 font-mono text-[10px]">
+                                    {new Date(log.sentAt).toLocaleTimeString()} {new Date(log.sentAt).toLocaleDateString()}
+                                  </td>
+                                  <td className="px-4 py-3 font-bold">
+                                    {log.status === "OPENED" ? (
+                                      <span className="flex items-center gap-1 text-teal-600 font-black">
+                                        <CheckCircle size={12} /> OPENED ({log.opens?.length || 0})
+                                      </span>
+                                    ) : (
+                                      <span className="text-slate-400 font-semibold">SENT</span>
+                                    )}
+                                  </td>
+                                  <td className="px-4 py-3 text-right">
+                                    <button
+                                      onClick={() => setExpandedEmailLogId(expandedEmailLogId === log.id ? null : log.id)}
+                                      className="px-2 py-1 text-[10px] font-bold uppercase border border-slate-200 hover:bg-slate-100 text-slate-500 hover:text-slate-700 rounded transition-colors cursor-pointer"
+                                    >
+                                      {expandedEmailLogId === log.id ? "Close" : "Inspect"}
+                                    </button>
+                                  </td>
+                                </tr>
+
+                                {/* Expanded tracking logs display */}
+                                {expandedEmailLogId === log.id && (
+                                  <tr className="bg-slate-50/50">
+                                    <td colSpan={5} className="px-4 py-3.5 border-t border-slate-100">
+                                      <div className="space-y-3.5">
+                                        <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                                          <h4 className="text-[10px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                                            <Send size={12} className="text-blue" /> SMTP Transmission Details
+                                          </h4>
+                                          <span className="text-[9px] font-mono text-slate-400">ID: {log.id}</span>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-[11px]">
+                                          <div className="space-y-1">
+                                            <span className="block font-bold text-[9px] text-slate-400 uppercase tracking-wide">Email Subject Line</span>
+                                            <span className="font-semibold text-slate-800 font-sans">{log.subject}</span>
+                                          </div>
+                                          <div className="space-y-1">
+                                            <span className="block font-bold text-[9px] text-slate-400 uppercase tracking-wide">Tracking Pixel Status</span>
+                                            <span>
+                                              {log.status === "OPENED" 
+                                                ? `Distinct engagement captured at ${new Date(log.opens[0].timestamp).toLocaleString()}` 
+                                                : "No pixel resolution events received yet."
+                                              }
+                                            </span>
+                                          </div>
+                                        </div>
+
+                                        {/* Activity Log list */}
+                                        {log.opens && log.opens.length > 0 && (
+                                          <div className="space-y-2 border-t border-slate-100 pt-3">
+                                            <span className="block text-[9px] font-black uppercase tracking-wider text-slate-400">
+                                              🔍 Tracking Pixel Activity Logs:
+                                            </span>
+                                            <div className="max-h-36 overflow-y-auto space-y-2">
+                                              {log.opens.map((op: any, oIndex: number) => (
+                                                <div key={oIndex} className="text-[10px] font-semibold text-slate-500 font-mono flex flex-col sm:flex-row sm:items-start sm:justify-between border-b border-slate-100 pb-2 gap-2">
+                                                  <div className="flex flex-wrap items-center gap-2">
+                                                    <span className="text-teal-650 font-bold">● Open #{oIndex + 1}</span>
+                                                    <span className="text-slate-650">{new Date(op.timestamp).toLocaleString()}</span>
+                                                    <span className="bg-slate-200/60 text-slate-600 px-1.5 py-0.2 rounded text-[9px]">IP: {op.ip}</span>
+                                                    {op.clientName && (
+                                                      <span className={`px-1.5 py-0.2 rounded text-[9px] ${op.isProxy ? "bg-amber-100 text-amber-800 font-black border border-amber-200" : "bg-blue/5 text-blue border border-blue/10"}`}>
+                                                        {op.clientName}
+                                                      </span>
+                                                    )}
+                                                    {op.os && (
+                                                      <span className="bg-slate-100 text-slate-600 px-1.5 py-0.2 rounded text-[9px] font-bold">
+                                                        💻 {op.device || "Desktop"} ({op.os})
+                                                      </span>
+                                                    )}
+                                                  </div>
+                                                  
+                                                  {op.country && (
+                                                    <div className="text-[9px] text-slate-400 font-bold uppercase tracking-wider flex items-center gap-1">
+                                                      <span>📍 Location:</span>
+                                                      <span className="text-slate-600 font-black">{op.city || "Unknown"}, {op.region || ""}, {op.country}</span>
+                                                      <span className="text-slate-300 font-normal">|</span>
+                                                      <span>ISP:</span>
+                                                      <span className="text-slate-600 font-black truncate max-w-[120px]" title={op.isp}>{op.isp}</span>
+                                                    </div>
+                                                  )}
+                                                </div>
+                                              ))}
+                                            </div>
+                                          </div>
+                                        )}
+                                      </div>
+                                    </td>
+                                  </tr>
+                                )}
+                              </React.Fragment>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Right Column: SMTP Diagnostic Verification Form */}
+                <div className="lg:col-span-1 space-y-4">
+                  <div className="card-panel p-5 rounded-xl space-y-4 shadow-sm">
+                    <div className="flex items-center gap-2 border-b border-slate-100 pb-2">
+                      <Mail size={16} className="text-blue" />
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                        SMTP Mail Diagnostic
+                      </h3>
+                    </div>
+
+                    <form onSubmit={handleSendTestEmail} className="space-y-4">
+                      <div className="space-y-1">
+                        <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                          Diagnostic Recipient Address
+                        </label>
+                        <input
+                          type="email"
+                          required
+                          placeholder="developer@masmarine.com"
+                          value={testEmailTarget}
+                          onChange={(e) => setTestEmailTarget(e.target.value)}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-slate-800 text-xs focus:outline-none focus:border-blue transition-colors font-semibold"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                          Alert Event Type Preview
+                        </label>
+                        <input
+                          type="text"
+                          readOnly
+                          value="SMTP Diagnostic: PASSWORD_RESET alert test"
+                          className="w-full bg-slate-100 border border-slate-200 text-slate-500 rounded-lg px-3 py-2 text-xs focus:outline-none cursor-not-allowed font-semibold"
+                        />
+                      </div>
+
+                      <p className="text-[10px] text-slate-400 font-semibold leading-relaxed">
+                        ⚠️ **Notice**: Submitting this form dispatches a standard password reset notification alert. Opening the link will register tracking logs in the panel above.
+                      </p>
+
+                      <button
+                        type="submit"
+                        disabled={isTestSending}
+                        className="w-full bg-blue hover:bg-sky-750 text-white font-bold uppercase text-xs tracking-wider py-2.5 rounded-lg transition-colors btn-touch cursor-pointer disabled:bg-blue/50"
+                      >
+                        {isTestSending ? "Sending Alert..." : "Dispatch Test Alert"}
+                      </button>
+                    </form>
+                  </div>
+                </div>
+
+              </div>
+
             </div>
           )}
 

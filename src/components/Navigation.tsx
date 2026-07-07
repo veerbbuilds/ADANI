@@ -326,7 +326,6 @@ export default function Navigation() {
     { href: "/surveyor/logs", label: "My Logs", icon: Database, visible: activeRole === "surveyor" },
     { href: "/dashboard", label: "Dashboard", icon: BarChart3, visible: showDashboard },
     { href: "/developer", label: "Developer", icon: ShieldAlert, visible: showDeveloper },
-    { href: "/developer/emails", label: "Email Logs", icon: Mail, visible: showDeveloper },
     { href: "/profile", label: "Profile", icon: User, visible: true },
   ];
 
