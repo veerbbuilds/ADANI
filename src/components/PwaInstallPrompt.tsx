@@ -13,6 +13,34 @@ export default function PwaInstallPrompt() {
   useEffect(() => {
     if (typeof window === "undefined") return;
 
+    // 🔒 Security Polyfill: Intercept global window.fetch to enforce a default 15-second timeout (CWE-400)
+    if (!(window as any).__fetch_intercepted__) {
+      (window as any).__fetch_intercepted__ = true;
+      const originalFetch = window.fetch;
+      window.fetch = async function (input, init) {
+        if (init?.signal) {
+          return originalFetch(input, init);
+        }
+        const timeout = (init as any)?.timeout ?? 15000;
+        const controller = new AbortController();
+        const id = setTimeout(() => controller.abort(), timeout);
+        try {
+          const response = await originalFetch(input, {
+            ...init,
+            signal: controller.signal,
+          });
+          clearTimeout(id);
+          return response;
+        } catch (error: any) {
+          clearTimeout(id);
+          if (error.name === "AbortError") {
+            throw new Error(`Request timed out after ${timeout}ms.`);
+          }
+          throw error;
+        }
+      };
+    }
+
     // 1. Detect if app is already running in standalone mode (installed)
     const checkIsInstalled = () => {
       const isStandalone = window.matchMedia("(display-mode: standalone)").matches;

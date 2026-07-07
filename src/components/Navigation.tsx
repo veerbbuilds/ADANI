@@ -269,9 +269,9 @@ export default function Navigation() {
         }
       }
 
-      // Remove all successfully synced entries at once
-      trimmedQueue.splice(0, successCount);
-      localStorage.setItem("offline_logs_queue", JSON.stringify(trimmedQueue));
+      // Remove all successfully synced entries at once from the original queue
+      queue.splice(0, successCount);
+      localStorage.setItem("offline_logs_queue", JSON.stringify(queue));
       window.dispatchEvent(new Event("queue-updated"));
     } catch (error) {
       console.error("Auto-sync failed:", error);

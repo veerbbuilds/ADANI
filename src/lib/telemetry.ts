@@ -130,7 +130,7 @@ export class TelemetryEngine {
         queue.push(payload);
         localStorage.setItem("offline_telemetry_queue", JSON.stringify(queue));
       } catch (e) {
-        // Fail silently
+        console.warn("Failed to cache telemetry event in localStorage:", e);
       }
     }
   }
@@ -171,9 +171,9 @@ export class TelemetryEngine {
         }
       }
 
-      // Remove all successfully synced entries at once
-      trimmedQueue.splice(0, successCount);
-      localStorage.setItem("offline_telemetry_queue", JSON.stringify(trimmedQueue));
+      // Remove all successfully synced entries at once from the original queue
+      queue.splice(0, successCount);
+      localStorage.setItem("offline_telemetry_queue", JSON.stringify(queue));
     } catch (err) {
       console.error("Telemetry sync failed:", err);
     }
