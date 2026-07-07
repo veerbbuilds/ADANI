@@ -1,0 +1,19 @@
+# Exclude local configurations and environment files
+.env.local
+.env.local.example
+.env
+
+# Exclude local database helper and initialization scripts
+bootstrap-auth.js
+seed-database.js
+
+# Exclude local developer guidebooks and agents setup
+devlopers docs/
+.agents/
+.firebase/
+firebase-debug.log*
+
+# Exclude git repository details
+.git
+.gitignore
+README.md
