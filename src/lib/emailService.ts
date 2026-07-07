@@ -32,9 +32,9 @@ export class EmailService {
    * Helper to wrap emails in our premium Adani Port branded wrapper and inject the tracking pixel
    */
   private static getBrandedWrapper(title: string, bodyHtml: string, emailLogId: string, origin?: string): string {
-    const appOrigin = origin || (process.env.NODE_ENV === "development"
+    const appOrigin = origin || process.env.NEXT_PUBLIC_APP_URL || (process.env.NODE_ENV === "development"
       ? "http://localhost:3000"
-      : `https://${process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "adani-port-logistics"}.web.app`);
+      : "https://adani.veertrading.in");
 
     const trackingPixel = `<img src="${appOrigin}/api/system/track-email?id=${emailLogId}" width="1" height="1" style="display:none;" alt="" />`;
 
@@ -265,9 +265,9 @@ export class EmailService {
     const subject = "Configure Your Login Password - Adani Port Logistics";
     
     // Core Reset Template HTML
-    const appOrigin = origin || (process.env.NODE_ENV === "development"
+    const appOrigin = origin || process.env.NEXT_PUBLIC_APP_URL || (process.env.NODE_ENV === "development"
       ? "http://localhost:3000"
-      : `https://${process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "adani-port-logistics"}.web.app`);
+      : "https://adani.veertrading.in");
 
     const trackingPixel = `<img src="${appOrigin}/api/system/track-email?id=${emailLogId}" width="1" height="1" style="display:none;" alt="" />`;
 
