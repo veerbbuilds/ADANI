@@ -35,29 +35,64 @@ try {
 
 if (!db || !auth) {
   console.warn(
-    "⚠️ Using mock Firestore and Auth instances for verification."
+    "⚠️ Firebase Admin Environment Variables are missing or malformed! Using bulletproof mock Firestore and Auth instances for build verification and local dev robustness."
   );
   
-  // Export a mock db object so the build doesn't crash during static page collection (CWE-703 / Fail Safe)
+  // Bulletproof mock Firestore database instance (CWE-703 / Fail Safe)
   db = {
-    collection: () => ({
-      doc: () => ({
-        get: async () => ({ exists: false, data: () => ({}) }),
-        set: async () => {},
-        delete: async () => {},
-      }),
-      orderBy: () => ({
-        limit: () => ({
-          get: async () => {
-            const mockSnapshot: any = [];
-            return mockSnapshot;
-          },
-        }),
-      }),
-    }),
+    collection: function (collectionName: string) {
+      const collectionRef = {
+        add: async (data: any) => ({ id: "mock-doc-id", ...data }),
+        doc: function (id?: string) {
+          return {
+            id: id || "mock-doc-id",
+            get: async () => ({
+              exists: false,
+              id: id || "mock-doc-id",
+              data: () => ({})
+            }),
+            set: async () => {},
+            update: async () => {},
+            delete: async () => {},
+            collection: () => collectionRef,
+          };
+        },
+        where: () => collectionRef,
+        orderBy: () => collectionRef,
+        limit: () => collectionRef,
+        get: async () => {
+          const mockSnapshot: any = [];
+          mockSnapshot.forEach = () => {};
+          mockSnapshot.docs = [];
+          mockSnapshot.empty = true;
+          mockSnapshot.size = 0;
+          return mockSnapshot;
+        },
+      };
+      return collectionRef;
+    },
+    runTransaction: async (callback: any) => {
+      const mockTransaction = {
+        get: async (docRef: any) => {
+          return { exists: false, data: () => ({}) };
+        },
+        set: (docRef: any, data: any) => {},
+        update: (docRef: any, data: any) => {},
+        delete: (docRef: any) => {},
+      };
+      return callback(mockTransaction);
+    },
+    batch: () => {
+      return {
+        set: () => {},
+        update: () => {},
+        delete: () => {},
+        commit: async () => {},
+      };
+    },
   } as any;
 
-  // Export a mock auth object for build verification and local dev robustness
+  // Bulletproof mock auth instance
   auth = {
     createUser: async (properties: any) => ({ uid: "mock-uid-123", ...properties }),
     setCustomUserClaims: async (uid: string, claims: any) => {},
@@ -67,7 +102,20 @@ if (!db || !auth) {
         return { uid: "mock-uid-123", email: "developer@masmarine.com", role: "superadmin" };
       }
       return { uid: "mock-uid-123", email: "surveyor@masmarine.com", role: "surveyor" };
-    }
+    },
+    listUsers: async () => ({
+      users: [
+        {
+          uid: "mock-uid-123",
+          email: "developer@masmarine.com",
+          customClaims: { role: "superadmin" },
+          disabled: false,
+          metadata: { creationTime: new Date().toISOString(), lastSignInTime: new Date().toISOString() },
+        }
+      ]
+    }),
+    updateUser: async (uid: string, properties: any) => ({ uid, ...properties }),
+    deleteUser: async (uid: string) => {},
   } as any;
 }
 
